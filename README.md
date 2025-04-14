@@ -1,0 +1,2 @@
+# ScholaraSmartContract
+For blockchain project
