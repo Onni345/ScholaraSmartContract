@@ -1,19 +1,36 @@
 // scripts/cli.js
+
 const hre = require("hardhat");
 const readline = require("readline");
+
+/* 
+    Entry point of the CLI that will deploy and interact with the ScholaraDAO smart contract.
+    We use Hardhat Runtime Environment (hre) to compile and deploy ScholaraDAO, then allow
+    for terminal-based interaction using the built-in readline interface for node.js.
+*/
 
 async function main() {
   const ScholaraDAO = await hre.ethers.getContractFactory("ScholaraDAO");
   const signers = await hre.ethers.getSigners();
 
+  /*
+      Sets up two default reviewers from available test signers and sets quorum threshold 
+      (i.e., number of YES votes needed for DAO consensus). Deploys the DAO contract and
+      waits for full blockchain commitment of the deploy.
+  */
   const reviewers = [signers[1].address, signers[2].address];
   const quorum = 2;
   const dao = await ScholaraDAO.deploy(reviewers, quorum);
   await dao.waitForDeployment();
   console.log("ScholaraDAO deployed at:", await dao.getAddress());
 
+  // Sets current user as the first signer (author by default) for simulation purposes.
   let currentUser = signers[0];
 
+  /*
+      Initializes standard input/output for user to interact with the DAO from the CLI.
+      Uses promise-wrapped readline to handle sequential async input cleanly.
+  */
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
@@ -23,6 +40,10 @@ async function main() {
     return new Promise((resolve) => rl.question(q, resolve));
   }
 
+  /*
+      Helper function to determine if a wallet address is a reviewer or an author.
+      This simplifies role-based logic enforcement throughout the CLI.
+  */
   function getRole(address) {
     if (address === signers[1].address || address === signers[2].address) {
       return "Reviewer";
@@ -31,6 +52,11 @@ async function main() {
     }
   }
 
+  /*
+      Main control loop that repeatedly prompts the user with possible actions
+      including submitting proposals, voting, executing proposals, switching users,
+      and retrieving metadata. Makes the DAO truly interactive from the command line.
+  */
   async function menu() {
     while (true) {
       console.log("\nCurrent Account:", currentUser.address);
@@ -45,6 +71,11 @@ async function main() {
 
       const choice = await ask("Choose an option: ");
 
+      /* 
+          Proposal submission is ONLY allowed by authors (i.e., non-reviewers). 
+          We connect to the DAO using the user's wallet and call the smart contract
+          to submit their paper metadata.
+      */
       if (choice === "1") {
         if (getRole(currentUser.address) !== "Author") {
           console.log("Only authors can submit proposals.");
@@ -58,12 +89,17 @@ async function main() {
         await tx.wait();
         console.log("Proposal submitted.");
 
+      /*
+          Reviewers can vote on proposals. This checks the proposal ID and asks the user
+          to vote yes or no. The command-line vote input is converted into a boolean for
+          compatibility with the smart contract logic.
+      */
       } else if (choice === "2") {
         if (getRole(currentUser.address) !== "Reviewer") {
           console.log("Only reviewers can vote on proposals.");
           continue;
         }
-        const id = await ask("Proposal ID: ");
+        const id = await ask("Proposal ID (Index of paper's submission): ");
         const voteInput = await ask("Vote 'yes' or 'no': ");
         const support = voteInput.toLowerCase() === "yes";
         const daoAsUser = dao.connect(currentUser);
@@ -75,6 +111,10 @@ async function main() {
           console.log("Error voting:", err.message);
         }
 
+      /*
+          Allows reviewers to execute a proposal if and only if the vote has passed.
+          Smart contract handles checks on quorum, vote totals, and execution status.
+      */
       } else if (choice === "3") {
         if (getRole(currentUser.address) !== "Reviewer") {
           console.log("Only reviewers can execute proposals.");
@@ -90,6 +130,10 @@ async function main() {
           console.log("Error executing proposal:", err.message);
         }
 
+      /*
+          Retrieves metadata for a specific proposal based on its ID. This is helpful for 
+          authors checking status or frontend renderers accessing on-chain content.
+      */
       } else if (choice === "4") {
         const id = await ask("Proposal ID: ");
         try {
@@ -109,6 +153,11 @@ async function main() {
           console.log("Error fetching proposal:", err.message);
         }
 
+      /*
+          Enables real-time switching of the simulated account wallet. This is 
+          particularly useful in test environments for seeing DAO behavior under 
+          different user roles.
+      */
       } else if (choice === "5") {
         console.log("Available accounts:");
         signers.forEach((s, i) => {
@@ -122,17 +171,24 @@ async function main() {
           console.log("Invalid index.");
         }
 
+      /*
+          Exits the CLI. Shuts down the readline interface and terminates
+          the smart contract simulation session.
+      */
       } else if (choice === "6") {
         rl.close();
         break;
 
+      // Fallback if invalid user input is entered.
       } else {
         console.log("Invalid choice.");
       }
     }
   }
 
+  // Begin main user interaction loop after deployment is successful.
   await menu();
 }
 
+// Error handling for any unanticipated CLI-level or contract-level runtime exceptions.
 main().catch(console.error);
