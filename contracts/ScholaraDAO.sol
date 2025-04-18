@@ -125,7 +125,7 @@ contract ScholaraDAO {
         Proposal storage prop = proposals[proposalId];
         require(!prop.executed, "Already executed");
 
-        require(prop.yesVotes > prop.noVotes, "Proposal rejected"); // ✅ flipped order
+        require(prop.yesVotes > prop.noVotes, "Proposal rejected");
         require(prop.yesVotes >= quorum, "Not enough yes votes");
 
         prop.executed = true;
